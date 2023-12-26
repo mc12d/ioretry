@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mc12d/ioretry/ioretry"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/mc12d/ioretry/ioretry"
+	"github.com/stretchr/testify/require"
 )
 
 type ioImpl struct {
@@ -43,7 +44,7 @@ func TestMultiIO(t *testing.T) {
 	defer cancel()
 
 	// then
-	merr, merrOK := err.(ioretry.MultiResourceError)
+	merr, merrOK := err.(ioretry.MultiIOError)
 	require.True(t, merrOK, fmt.Sprintf("actual err: %T, errMsg: %s", err, err.Error()))
 	require.Equal(t, 3, len(merr))
 
@@ -76,7 +77,7 @@ func TestWrapIO(t *testing.T) {
 			return e
 		}}
 		// io1 will drain all retries earlier, so io2 would not succeed
-		ios = ioretry.MultiEager(
+		ios = ioretry.MultiFailFast(
 			ioretry.Wrap(io1, ioretry.OptRetry(3, 100*time.Millisecond)),
 			ioretry.Wrap(io2, ioretry.OptTimeout(600*time.Millisecond)),
 		)

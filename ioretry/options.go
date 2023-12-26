@@ -9,22 +9,29 @@ type Config struct {
 	n int
 	d time.Duration
 
-	signals         []os.Signal
-	continueOnError bool
-	continueOnPanic bool
+	signalContinueOnError bool
+	signals               []os.Signal
+
+	recoverPanic         bool
+	panicContinueOnError bool
+
+	repeat bool
 }
 
-const RetryInfinitely = -1
+const (
+	Forever  int           = -1
+	OutATime time.Duration = 0
+)
 
 type Option func(*Config)
 
 var (
+    // default config does effectively nothing
 	DefaultConfig = func() Config {
 		config := Config{}
 
-		OptTimeout(time.Second)(&config)
-		OptHandleSignals()(&config)
-		OptContinueOnPanic(false)(&config)
+		OptTimeout(OutATime)(&config)
+		OptRecoverPanic(false)(&config)
 
 		return config
 	}()
@@ -38,23 +45,25 @@ func NewConfig(opts ...Option) *Config {
 	return &config
 }
 
-// OptRetry specify -1 for n = +inf
+// OptRetry
+// - use ioretry.Forever for infinite retries
+// - use ioretry.OutATime for no time limit
 // OptRetry, OptRepeat and OptTimeout are mutually exclusive
 func OptRetry(n int, period time.Duration) Option {
 	return func(config *Config) {
 		config.n = n
 		config.d = period
-		config.continueOnError = false
+		config.repeat = false
 	}
 }
 
-// OptRepeat similar to OptRetry, but continues repeating if underlying IO returns no error
+// OptRepeat similar to OptRetry, but continues repeating whenever underlying IO fails or succeeds
 // OptRetry, OptRepeat and OptTimeout are mutually exclusive
 func OptRepeat(n int, period time.Duration) Option {
 	return func(config *Config) {
 		config.n = n
 		config.d = period
-		config.continueOnError = true
+		config.repeat = true
 	}
 }
 
@@ -64,16 +73,29 @@ func OptTimeout(t time.Duration) Option {
 	return OptRetry(1, t)
 }
 
-// OptHandleSignals will return ioretry.SignalError immediately if encountered any of specified signals
-// unlike signal.Notify, empty argument corresponds to no signals being handled
-func OptHandleSignals(signals ...os.Signal) Option {
+// OptRecoverPanic recovers panic and returns ioretry.PanicError
+// limitation - does not recover panics in foreign goroutines, like
+//
+//		f := func(ctx context.Context) error {
+//			   ch := make(chan error, 1)
+//			   go func() {
+//					err := errors.New("I will not be recovered")
+//				    defer ch <- err
+//			        panic(err)
+//			   }
+//	           return <-ch
+//		}
+func OptRecoverPanic(recover bool) Option {
 	return func(config *Config) {
-		config.signals = signals
+		config.recoverPanic = recover
+		config.panicContinueOnError = true
 	}
 }
 
-func OptContinueOnPanic(recover bool) Option {
+// OptRecoverPanicAndStopTrying similar to OptRecoverPanic, but discards remaining retries
+func OptRecoverPanicAndStopTrying(recover bool) Option {
 	return func(config *Config) {
-		config.continueOnPanic = recover
+		config.recoverPanic = recover
+		config.panicContinueOnError = false
 	}
 }

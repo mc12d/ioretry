@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mc12d/ioretry/ioretry"
-	"github.com/stretchr/testify/require"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
+
+	"github.com/mc12d/ioretry/ioretry"
+	"github.com/stretchr/testify/require"
 )
 
 func SleepContext(ctx context.Context, d time.Duration) error {
@@ -52,7 +52,7 @@ func TestMultiFunc(t *testing.T) {
 	defer cancel()
 
 	// then
-	merr, merrOK := err.(ioretry.MultiError)
+	merr, merrOK := err.(ioretry.MultiFuncError)
 	require.True(t, merrOK, fmt.Sprintf("actual err: %T, errMsg: %s", err, err.Error()))
 	require.Equal(t, 1, len(merr))
 	require.True(t, errors.Is(merr[0], context.DeadlineExceeded))
@@ -75,7 +75,7 @@ func TestMultiFuncEager(t *testing.T) {
 		f3 = func(ctx context.Context) error {
 			return SleepContextError(ctx, 300*time.Millisecond, f3Err)
 		}
-		f = ioretry.MultiFuncEager(f1, f2, f3)
+		f = ioretry.MultiFuncFailFast(f1, f2, f3)
 	)
 	// when
 	var (
@@ -109,11 +109,7 @@ func TestWrapFunc(t *testing.T) {
 
 		}
 		retryCancelledF = timeoutFailedF
-		signalF         = func(ctx context.Context) error {
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-			return SleepContext(ctx, 50*time.Millisecond)
-		}
-		panicF = func(ctx context.Context) error { panic(errors.New("panicking ✋")) }
+		panicF          = func(ctx context.Context) error { panic(errors.New("panicking ✋")) }
 	)
 	var (
 		timeoutFailedFF     = ioretry.WrapFunc(timeoutFailedF, ioretry.OptTimeout(100*time.Millisecond))
@@ -122,8 +118,7 @@ func TestWrapFunc(t *testing.T) {
 		retrySucceededFF    = ioretry.WrapFunc(retrySucceededF, ioretry.OptRetry(2, 100*time.Millisecond))
 		retrySucceededAt3FF = ioretry.WrapFunc(retrySucceededAt3F, ioretry.OptRetry(4, 100*time.Millisecond))
 		retryCancelledFF    = ioretry.WrapFunc(retryCancelledF, ioretry.OptRetry(4, 100*time.Millisecond))
-		signalFF            = ioretry.WrapFunc(signalF, ioretry.OptHandleSignals(syscall.SIGINT))
-		panicFF             = ioretry.WrapFunc(panicF, ioretry.OptContinueOnPanic(true))
+		panicFF             = ioretry.WrapFunc(panicF, ioretry.OptRecoverPanic(true))
 	)
 
 	// when
@@ -134,7 +129,6 @@ func TestWrapFunc(t *testing.T) {
 		errRetrySucceeded    = make(chan error, 1)
 		errRetrySucceededAt3 = make(chan error, 1)
 		errRetryCancelled    = make(chan error, 1)
-		errSignal            = make(chan error, 1)
 		errPanic             = make(chan error, 1)
 	)
 	goCh(ctx, timeoutFailedFF, errTimeoutFailed)
@@ -156,11 +150,6 @@ func TestWrapFunc(t *testing.T) {
 	require.Nil(t, <-errTimeoutSucceeded)
 	require.Nil(t, <-errRetrySucceeded)
 	require.ErrorIs(t, <-errRetryCancelled, context.Canceled)
-
-	goCh(ctx, signalFF, errSignal)
-	errSignalErr, ok := (<-errSignal).(ioretry.SignalError)
-	require.True(t, ok)
-	require.Equal(t, syscall.SIGINT, errSignalErr.Sig)
 }
 
 func TestMultiWrapFunc(t *testing.T) {

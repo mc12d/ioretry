@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
 	"time"
 )
 
@@ -17,6 +15,7 @@ func MultiFunc(ff ...IOFunc) IOFunc {
 				errs <- f(ctx)
 			}(f)
 		}
+
 		me := make([]error, 0)
 		for i := 0; i < len(ff); i++ {
 			select {
@@ -25,17 +24,18 @@ func MultiFunc(ff ...IOFunc) IOFunc {
 					me = append(me, err)
 				}
 			case <-ctx.Done():
-				return MultiError([]error{ctx.Err()})
+				return MultiFuncError([]error{ctx.Err()})
 			}
 		}
+
 		if len(me) == 0 {
 			return nil
 		}
-		return MultiError(me)
+		return MultiFuncError(me)
 	}
 }
 
-func MultiFuncEager(ff ...IOFunc) IOFunc {
+func MultiFuncFailFast(ff ...IOFunc) IOFunc {
 	return func(ctx context.Context) error {
 		errs := make(chan error, len(ff))
 		newCtx, cancel := context.WithCancel(ctx)
@@ -46,6 +46,7 @@ func MultiFuncEager(ff ...IOFunc) IOFunc {
 				errs <- f(newCtx)
 			}(f)
 		}
+
 		for i := 0; i < len(ff); i++ {
 			select {
 			case err := <-errs:
@@ -67,12 +68,13 @@ func WrapFunc(f IOFunc, opts ...Option) IOFunc {
 			continueLoop bool
 			err          error
 		)
-		for i := 0; i < config.n || config.n == RetryInfinitely; i++ {
+		for i := 0; i < config.n || config.n == Forever; i++ {
+			t := time.Now()
 			err, continueLoop = handleIteration(ctx, f, config)
 			if !continueLoop {
 				return err
 			}
-			time.Sleep(config.d)
+			time.Sleep(config.d - time.Since(t))
 		}
 		if err != nil {
 			return fmt.Errorf("max retry count reached, underlying error: %w", err)
@@ -84,19 +86,19 @@ func WrapFunc(f IOFunc, opts ...Option) IOFunc {
 // handleIteration performs single IOFunc call and controls execution process as specified by options
 func handleIteration(parentCtx context.Context, f IOFunc, config *Config) (err error, continueLoop bool) {
 	var (
-		sigCh            = make(chan os.Signal, 1)
 		recoverCh        chan error
 		errCh            = make(chan error, 1)
-		childCtx, cancel = context.WithTimeout(parentCtx, config.d)
+		childCtx, cancel = func() (context.Context, context.CancelFunc) {
+			if config.d == OutATime {
+				return context.WithCancel(parentCtx)
+			}
+			return context.WithTimeout(parentCtx, config.d)
+		}()
 	)
 	defer cancel()
-	defer signal.Stop(sigCh)
 
-	if config.continueOnPanic {
+	if config.recoverPanic {
 		recoverCh = make(chan error, 1)
-	}
-	if len(config.signals) > 0 {
-		signal.Notify(sigCh, config.signals...)
 	}
 
 	goFuncAndRecover(childCtx, f, errCh, recoverCh)
@@ -110,11 +112,9 @@ func handleIteration(parentCtx context.Context, f IOFunc, config *Config) (err e
 		}
 		return
 	case err = <-errCh:
-		return err, err != nil || config.continueOnError
+		return err, err != nil || config.repeat
 	case err = <-recoverCh:
 		return PanicError{Err: err}, true
-	case sig := <-sigCh:
-		return SignalError{Sig: sig}, false
 	}
 }
 

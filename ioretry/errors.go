@@ -2,21 +2,8 @@ package ioretry
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
-
-type SignalError struct {
-	Sig os.Signal
-}
-
-func (e SignalError) Error() string {
-	sig := "unknown"
-	if e.Sig != nil {
-		sig = e.Sig.String()
-	}
-	return fmt.Sprintf("encountered signal: %s", sig)
-}
 
 type PanicError struct {
 	Err error
@@ -26,9 +13,9 @@ func (pe PanicError) Error() string {
 	return fmt.Sprintf("encountered panic: %s", pe.Err)
 }
 
-type MultiError []error
+type MultiFuncError []error
 
-func (me MultiError) Error() string {
+func (me MultiFuncError) Error() string {
 	sb := strings.Builder{}
 	sb.WriteString("multiple errors: ")
 
@@ -41,9 +28,9 @@ func (me MultiError) Error() string {
 	return sb.String()
 }
 
-type MultiResourceError map[IO]error
+type MultiIOError map[IO]error
 
-func (me MultiResourceError) Error() string {
+func (me MultiIOError) Error() string {
 	sb := strings.Builder{}
 	sb.WriteString("multiple errors: ")
 

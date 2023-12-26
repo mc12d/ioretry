@@ -11,7 +11,7 @@ func Multi(ios ...IO) IO {
 	}
 }
 
-func MultiEager(ios ...IO) IO {
+func MultiFailFast(ios ...IO) IO {
 	return &multiIO{
 		underlying: ios,
 		eager:      true,
@@ -48,7 +48,7 @@ func (m *multiIO) Run(ctx context.Context) error {
 	if len(me) == 0 {
 		return nil
 	}
-	return MultiResourceError(me)
+	return MultiIOError(me)
 }
 
 func (m *multiIO) removeNilValues(errs map[IO]error) {
