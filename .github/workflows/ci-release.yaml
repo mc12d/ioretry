@@ -1,0 +1,28 @@
+name: ci-release
+run-name: gorelease
+on:
+  push:
+    tags: 'v0.*'
+
+jobs:
+  gorelease:
+    needs: [ci]
+
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v4
+
+      - name: goreleaser-run
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
