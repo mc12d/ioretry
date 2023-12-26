@@ -1,5 +1,8 @@
 ### ioretry
 
+[![codecov](https://codecov.io/gh/mc12d/ioretry/graph/badge.svg?token=7I75NBNNTG)](https://codecov.io/gh/mc12d/ioretry)
+![ci](https://github.com/mc12d/ioretry/actions/workflows/ci.yaml/badge.svg)
+
 `go get github.com/mc12d/ioretry@v0.1.0`
 
 Trying-to-be-convenient API for performing retries and timeouts on multiple
