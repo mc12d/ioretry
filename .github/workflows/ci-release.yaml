@@ -3,11 +3,14 @@ run-name: gorelease
 on:
   push:
     tags: 'v0.*'
+permissions: write-all
 
 jobs:
-  gorelease:
-    needs: [ci]
+  gotest:
+    uses: ./.github/workflows/ci.yaml
 
+  gorelease:
+    needs: [gotest]
     runs-on: ubuntu-22.04
     
     steps:

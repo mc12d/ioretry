@@ -54,6 +54,35 @@ func TestMultiIO(t *testing.T) {
 
 }
 
+func TestMultiIOSucceeds(t *testing.T) {
+    // given
+	var (
+		io1 = &ioImpl{func(ctx context.Context) error {
+			return SleepContext(ctx, 100*time.Millisecond)
+		}}
+		io2 = &ioImpl{func(ctx context.Context) error {
+			return SleepContext(ctx, 200*time.Millisecond)
+		}}
+		io3 = &ioImpl{func(ctx context.Context) error {
+			return SleepContext(ctx, 300*time.Millisecond)
+		}}
+		io = ioretry.Multi(
+            ioretry.Wrap(io1, ioretry.OptRepeat(2, 150 * time.Millisecond)), 
+            io2, 
+            io3,
+        )
+	)
+
+    // when
+    var (
+        ctx = context.Background()
+        err = io.Run(ctx)
+    )
+
+    // then
+    require.NoError(t, err)
+}
+
 func TestWrapIO(t *testing.T) {
 	// given
 	var (

@@ -39,22 +39,16 @@ func (m *multiIO) Run(ctx context.Context) error {
 	for i := 0; i < len(m.underlying); i++ {
 		select {
 		case err := <-errs:
-			if err.err != nil && m.eager {
-				return err.err
+			if err.err != nil {
+				if m.eager {
+					return err.err
+				}
+				me[err.io] = err.err
 			}
-			me[err.io] = err.err
 		}
 	}
 	if len(me) == 0 {
 		return nil
 	}
 	return MultiIOError(me)
-}
-
-func (m *multiIO) removeNilValues(errs map[IO]error) {
-	for _, k := range m.underlying {
-		if v, ok := errs[k]; ok && v == nil {
-			delete(errs, k)
-		}
-	}
 }
